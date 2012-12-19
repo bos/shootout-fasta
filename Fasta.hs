@@ -96,18 +96,22 @@ random (a,b) = do
                     else find (i+1)
         find 0
 
+genRand :: Int -> (Double, Int)
+genRand seed = (newran, newseed)
+  where
+    !newseed = (seed * ia + ic) `rem` im
+    !newran  =  fromIntegral newseed * rimd
+    rimd      = 1.0 / fromIntegral im
+    im, ia, ic :: Int
+    im  = 139968
+    ia  = 3877
+    ic  = 29573
+
 rand :: IO Double
 {-# INLINE rand #-}
 rand = do
     !seed <- readIORef last
-    let
-        newseed = (seed * ia + ic) `rem` im
-        newran  =  fromIntegral newseed * rimd
-        rimd      = 1.0 / (fromIntegral im)
-        im, ia, ic :: Int
-        im  = 139968
-        ia  = 3877
-        ic  = 29573
+    let (newran, newseed) = genRand seed
     writeIORef last newseed
     return newran
     where
