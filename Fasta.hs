@@ -83,39 +83,35 @@ repeat xs !n = do
         return $ xs `unsafeAt` i
 
 random :: C -> IO Word8
-random (a,b) = do
-        !rnd <- rand
-        let
-            find :: Int -> IO Word8
-            find !i =
-                let
-                    !c = a `unsafeAt` i
-                    !p = b `unsafeAt` i
-                in if p >= rnd
-                    then return c
-                    else find (i+1)
-        find 0
+random ab = do
+  seed <- readIORef last
+  let !(W newseed val) = genRandom seed ab
+  writeIORef last newseed
+  return val
+ where
+  last = unsafePerformIO $ newIORef 42
 
-genRand :: Int -> (Double, Int)
-genRand seed = (newran, newseed)
+data W = W {-# UNPACK #-} !Int {-# UNPACK #-} !Word8
+
+genRandom :: Int -> C -> W
+genRandom seed (!a,!b) = find 0
+  where find i
+            | b `unsafeAt` i >= rnd = W newseed (a `unsafeAt` i)
+            | otherwise = find (i+1)
+        D newseed rnd = genRand seed
+
+data D = D {-# UNPACK #-} !Int {-# UNPACK #-} !Double
+
+genRand :: Int -> D
+genRand seed = D newseed newran
   where
-    !newseed = (seed * ia + ic) `rem` im
-    !newran  =  fromIntegral newseed * rimd
+    newseed = (seed * ia + ic) `rem` im
+    newran  =  fromIntegral newseed * rimd
     rimd      = 1.0 / fromIntegral im
     im, ia, ic :: Int
     im  = 139968
     ia  = 3877
     ic  = 29573
-
-rand :: IO Double
-{-# INLINE rand #-}
-rand = do
-    !seed <- readIORef last
-    let (newran, newseed) = genRand seed
-    writeIORef last newseed
-    return newran
-    where
-        last = unsafePerformIO $ newIORef 42
 
 alu    :: [Char]
 alu =
