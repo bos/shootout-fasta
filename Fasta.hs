@@ -9,6 +9,7 @@
 import System.Environment
 import System.IO.Unsafe
 
+import Control.Monad
 import Data.IORef
 import Data.Array.Unboxed
 import Data.Array.Storable
@@ -33,68 +34,55 @@ main = do
 
     let !a = (listArray (0,(length alu)-1)
              $ map (fromIntegral. fromEnum) alu:: A)
-    make "ONE" "Homo sapiens alu" (n*2) $ Main.repeat a (length alu)
-    make "TWO"  "IUB ambiguity codes" (n*3) $ random iub
-    make "THREE" "Homo sapiens frequency" (n*5) $ random homosapiens
+    make "ONE" "Homo sapiens alu" (n*2) (Main.repeat a (length alu)) 0
+    r <- make "TWO"  "IUB ambiguity codes" (n*3) (genRandom iub) 42
+    _ <- make "THREE" "Homo sapiens frequency" (n*5) (genRandom homosapiens) r
+    return ()
 
-make :: String -> String -> Int -> IO Word8 -> IO ()
+make :: String -> String -> Int -> (Int -> W) -> Int -> IO Int
 {-# INLINE make #-}
-make id desc n f = do
+make id desc n f seed0 = do
     let lst = ">" ++ id ++ " " ++ desc
     a <- (newListArray (0,length lst)
         $ map (fromIntegral. fromEnum) lst:: IO B)
     unsafeWrite a (length lst) 0
     pr a
-    make' n 0
-    where
-        make' :: Int -> Int -> IO ()
-        make' !n !i = do
-            let line = (unsafePerformIO $
-                        newArray (0,60) 0 :: B)
+    line <- newArray (0,60) 0
+    let make' :: Int -> Int -> Int -> IO Int
+        make' !n !i !seed = do
             if n > 0
                 then do
-                    !c <- f
+                    let W newseed c = f seed
                     unsafeWrite line i c
                     if i+1 >= 60
                         then do
                             pr line
-                            make' (n-1) 0
+                            make' (n-1) 0 newseed
                         else
-                            make' (n-1) (i+1)
+                            make' (n-1) (i+1) newseed
                 else do
                     unsafeWrite line i 0
                     l <- len line
-                    if l /= 0
-                        then pr line
-                        else return ()
+                    when (l /= 0) $
+                      pr line
+                    return seed
+    make' n 0 seed0
 
 pr :: B -> IO ()
 pr line = withStorableArray line (\ptr -> puts ptr)
 len :: B -> IO CInt
 len line  = withStorableArray line (\ptr -> strlen ptr)
 
-repeat :: A -> Int -> IO Word8
-repeat xs !n = do
-        let v = unsafePerformIO $ newIORef 0
-        !i <- readIORef v
-        if i+1 >= n
-            then writeIORef v 0
-            else writeIORef v (i+1)
-        return $ xs `unsafeAt` i
-
-random :: C -> IO Word8
-random ab = do
-  seed <- readIORef last
-  let !(W newseed val) = genRandom seed ab
-  writeIORef last newseed
-  return val
- where
-  last = unsafePerformIO $ newIORef 42
+repeat :: A -> Int -> Int -> W
+repeat xs n i = W i' (xs `unsafeAt` i)
+    where i' | i1 >= n   = 0
+             | otherwise = i1
+          i1 = i + 1
 
 data W = W {-# UNPACK #-} !Int {-# UNPACK #-} !Word8
 
-genRandom :: Int -> C -> W
-genRandom seed (!a,!b) = find 0
+genRandom :: C -> Int -> W
+genRandom (!a,!b) seed = find 0
   where find i
             | b `unsafeAt` i >= rnd = W newseed (a `unsafeAt` i)
             | otherwise = find (i+1)
