@@ -1,9 +1,11 @@
 GHC = ghc
+CXXFLAGS = -std=c++11 -O3
+GHCFLAGS = -O3
 
 all: fastacpp fastahs
 
 fastacpp: fasta.cpp
-	$(CXX) -O3 -o $@ $^
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
 fastahs: Fasta.hs
-	$(GHC) -O3 --make -o $@ $^
+	$(GHC) $(GHCFLAGS) --make -o $@ $^
