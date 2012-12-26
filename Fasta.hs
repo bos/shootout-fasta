@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings #-}
 {-  The Computer Language Benchmarks Game
 
     http://shootout.alioth.debian.org/
@@ -11,6 +11,9 @@ module Main (main) where
 import System.Environment
 import System.IO.Unsafe
 
+import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Unsafe as B
+import Data.ByteString (ByteString)
 import Control.Monad
 import Data.IORef
 import Data.Array.Unboxed
@@ -21,7 +24,6 @@ import Data.Word
 import Foreign.Ptr
 import Foreign.C.Types
 
-type A = UArray Int Word8
 type B = StorableArray Int Word8
 type C = (UArray Int Word8,UArray Int Double)
 
@@ -34,9 +36,7 @@ main :: IO ()
 main = do
     n <- getArgs >>= readIO.head
 
-    let !a = (listArray (0,(length alu)-1)
-             $ map (fromIntegral. fromEnum) alu:: A)
-    make "ONE" "Homo sapiens alu" (n*2) (Main.repeat a (length alu)) 0
+    make "ONE" "Homo sapiens alu" (n*2) (Main.repeat alu) 0
     r <- make "TWO"  "IUB ambiguity codes" (n*3) (genRandom iub) 42
     _ <- make "THREE" "Homo sapiens frequency" (n*5) (genRandom homosapiens) r
     return ()
@@ -75,11 +75,12 @@ pr line = withStorableArray line (\ptr -> puts ptr)
 len :: B -> IO CInt
 len line  = withStorableArray line (\ptr -> fromIntegral `fmap` strlen ptr)
 
-repeat :: A -> Int -> Int -> W
-repeat xs n i = W i' (xs `unsafeAt` i)
+repeat :: ByteString -> Int -> W
+repeat xs i = W i' (xs `B.unsafeIndex` i)
     where i' | i1 >= n   = 0
              | otherwise = i1
           i1 = i + 1
+	  n = B.length xs
 
 data W = W {-# UNPACK #-} !Int {-# UNPACK #-} !Word8
 
@@ -103,7 +104,7 @@ genRand seed = D newseed newran
     ia  = 3877
     ic  = 29573
 
-alu    :: [Char]
+alu :: ByteString
 alu =
     "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGG\
     \GAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGA\
