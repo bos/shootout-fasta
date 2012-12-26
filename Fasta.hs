@@ -8,21 +8,17 @@
 
 module Main (main) where
 
-import System.Environment
-
-import qualified Data.ByteString.Char8 as B8
+import System.Environment (getArgs)
 import qualified Data.ByteString.Unsafe as B
 import qualified Data.ByteString.Internal as B
 import qualified Data.ByteString as B
-import Control.Monad
+import Control.Monad (when, void)
 import Data.Array.Base
-import Data.Word
-import Data.Monoid
+import Data.Word (Word8)
 
 import Foreign.Ptr
-import Foreign.Storable
+import Foreign.Storable (peek, poke)
 import Foreign.C.Types
-import System.IO
 
 type C = (UArray Int Word8,UArray Int Double)
 
@@ -41,23 +37,19 @@ main = do
 make :: B.ByteString -> B.ByteString -> Int -> (Int -> W) -> Int -> IO Int
 {-# INLINE make #-}
 make id desc n f seed0 = do
-    B.unsafeUseAsCString (">" <> id <> " " <> desc) puts
+    B.unsafeUseAsCString (B.concat [">", id, " ", desc]) puts
     let line = B.replicate 61 0
     B.unsafeUseAsCString line $ \ptr -> do
-      let make' :: Int -> Int -> Int -> IO Int
-	  make' !n !i !seed = do
-	      if n > 0
-		  then do
-		      let W newseed c = f seed
-		      poke (ptr `plusPtr` i) c
-		      if i+1 >= 60
-			  then puts ptr >> make' (n-1) 0 newseed
-			  else make' (n-1) (i+1) newseed
-		  else do
-		      when (i > 0) $ do
-		        poke (ptr `plusPtr` i) (0::CChar)
-		        puts ptr
-		      return seed
+      let make' !n !i !seed
+	      | n > 0 = do
+		  let W newseed c = f seed
+		  poke (ptr `plusPtr` i) c
+		  if i+1 >= 60
+		      then puts ptr >> make' (n-1) 0 newseed
+		      else make' (n-1) (i+1) newseed
+	      | otherwise = do
+		  when (i > 0) $ poke (ptr `plusPtr` i) (0::CChar) >> puts ptr
+		  return seed
       make' n 0 seed0
 
 repeat :: Ptr CChar -> Int -> Int -> W
