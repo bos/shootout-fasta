@@ -6,6 +6,8 @@
     contributed by Branimir Maksimovic
 -}
 
+module Main (main) where
+
 import System.Environment
 import System.IO.Unsafe
 
@@ -26,7 +28,7 @@ type C = (UArray Int Word8,UArray Int Double)
 foreign import ccall unsafe "stdio.h"
      puts  :: Ptr a -> IO ()
 foreign import ccall unsafe "string.h"
-     strlen :: Ptr a -> IO CInt
+     strlen :: Ptr Word8 -> IO CSize
 
 main :: IO ()
 main = do
@@ -71,7 +73,7 @@ make id desc n f seed0 = do
 pr :: B -> IO ()
 pr line = withStorableArray line (\ptr -> puts ptr)
 len :: B -> IO CInt
-len line  = withStorableArray line (\ptr -> strlen ptr)
+len line  = withStorableArray line (\ptr -> fromIntegral `fmap` strlen ptr)
 
 repeat :: A -> Int -> Int -> W
 repeat xs n i = W i' (xs `unsafeAt` i)
