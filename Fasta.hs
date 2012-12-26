@@ -90,21 +90,17 @@ alu =
     \AGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCC\
     \AGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
 
-mkCum :: [(Char,Double)] -> [(Word8,Double)]
-mkCum lst = map (\(c,p) -> ((fromIntegral.fromEnum) c,p)) $
-              scanl1 (\(_,p) (c',p') -> (c', p+p')) lst
+mkCum :: [(Char,Double)] -> C
+mkCum lst = (listArray (0, length lst - 1) (map fst ab),
+      	     listArray (0, length lst - 1) (map snd ab))
+  where ab = map (\(c,p) -> ((fromIntegral.fromEnum) c,p)) .
+             scanl1 (\(_,p) (c',p') -> (c', p+p')) $ lst
 
 homosapiens, iub :: C
 
-iub' = mkCum [('a',0.27),('c',0.12),('g',0.12),('t',0.27),('B',0.02)
+iub = mkCum [('a',0.27),('c',0.12),('g',0.12),('t',0.27),('B',0.02)
         ,('D',0.02),('H',0.02),('K',0.02),('M',0.02),('N',0.02)
         ,('R',0.02),('S',0.02),('V',0.02),('W',0.02),('Y',0.02)]
 
-homosapiens' = mkCum [('a',0.3029549426680),('c',0.1979883004921)
+homosapiens = mkCum [('a',0.3029549426680),('c',0.1979883004921)
                 ,('g',0.1975473066391),('t',0.3015094502008)]
-
-iub = (listArray (0, (length iub')-1) $ map fst iub',
-        listArray (0, (length iub')-1) $ map snd iub')
-
-homosapiens = (listArray (0, (length homosapiens')-1) $ map fst homosapiens',
-                listArray (0, (length homosapiens')-1) $ map snd homosapiens')
