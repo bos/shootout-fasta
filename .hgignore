@@ -1,0 +1,4 @@
+.*\.(?:hi|o|cmm|hp|prof|orig|stg)$
+^perf\.data
+.*~$
+^[fF]asta(?:|cpp|c|hs)$
