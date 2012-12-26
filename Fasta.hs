@@ -13,6 +13,7 @@ import System.IO.Unsafe
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Unsafe as B
+import qualified Data.ByteString.Internal as B
 import Data.ByteString (ByteString)
 import Control.Monad
 import Data.IORef
@@ -22,6 +23,7 @@ import Data.Array.Base
 import Data.Word
 
 import Foreign.Ptr
+import Foreign.Storable
 import Foreign.C.Types
 
 type B = StorableArray Int Word8
@@ -36,7 +38,8 @@ main :: IO ()
 main = do
     n <- getArgs >>= readIO.head
 
-    make "ONE" "Homo sapiens alu" (n*2) (Main.repeat alu) 0
+    B.unsafeUseAsCString alu $ \ptr ->
+      make "ONE" "Homo sapiens alu" (n*2) (Main.repeat ptr (B.length alu)) 0
     r <- make "TWO"  "IUB ambiguity codes" (n*3) (genRandom iub) 42
     _ <- make "THREE" "Homo sapiens frequency" (n*5) (genRandom homosapiens) r
     return ()
@@ -75,12 +78,11 @@ pr line = withStorableArray line (\ptr -> puts ptr)
 len :: B -> IO CInt
 len line  = withStorableArray line (\ptr -> fromIntegral `fmap` strlen ptr)
 
-repeat :: ByteString -> Int -> W
-repeat xs i = W i' (xs `B.unsafeIndex` i)
+repeat :: Ptr CChar -> Int -> Int -> W
+repeat xs n i = B.inlinePerformIO $ W i' `fmap` peek (xs `plusPtr` i)
     where i' | i1 >= n   = 0
              | otherwise = i1
           i1 = i + 1
-	  n = B.length xs
 
 data W = W {-# UNPACK #-} !Int {-# UNPACK #-} !Word8
 
