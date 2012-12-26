@@ -20,7 +20,7 @@ import Foreign.Ptr
 import Foreign.Storable (peek, poke)
 import Foreign.C.Types
 
-type C = (UArray Int Word8,UArray Int Double)
+type C = (UArray Int Word8,UArray Int Float)
 
 foreign import ccall unsafe "stdio.h"
      puts  :: Ptr a -> IO ()
@@ -67,7 +67,7 @@ genRandom (!a,!b) seed = find 0
             | otherwise = find (i+1)
         D newseed rnd = genRand seed
 
-data D = D {-# UNPACK #-} !Int {-# UNPACK #-} !Double
+data D = D {-# UNPACK #-} !Int {-# UNPACK #-} !Float
 
 genRand :: Int -> D
 genRand seed = D newseed newran
@@ -90,7 +90,7 @@ alu =
     \AGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCC\
     \AGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
 
-mkCum :: [(Char,Double)] -> C
+mkCum :: [(Char,Float)] -> C
 mkCum lst = (listArray (0, length lst - 1) (map fst ab),
       	     listArray (0, length lst - 1) (map snd ab))
   where ab = map (\(c,p) -> ((fromIntegral.fromEnum) c,p)) .
