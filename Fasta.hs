@@ -29,15 +29,15 @@ main :: IO ()
 main = do
     n <- getArgs >>= readIO.head
 
-    B.unsafeUseAsCString alu $ \ptr ->
-      make "ONE" "Homo sapiens alu" (n*2) (Main.repeat ptr (B.length alu)) 0
-    make "TWO"  "IUB ambiguity codes" (n*3) (genRandom iub) 42 >>=
-      void . make "THREE" "Homo sapiens frequency" (n*5) (genRandom homosapiens)
+    B.unsafeUseAsCString alu $ \ptr -> void $
+      make ">ONE Homo sapiens alu" (n*2) (Main.repeat ptr (B.length alu)) 0
+    make ">TWO IUB ambiguity codes" (n*3) (genRandom iub) 42 >>=
+      void . make ">THREE Homo sapiens frequency" (n*5) (genRandom homosapiens)
 
-make :: B.ByteString -> B.ByteString -> Int -> (Int -> W) -> Int -> IO Int
+make :: B.ByteString -> Int -> (Int -> W) -> Int -> IO Int
 {-# INLINE make #-}
-make id desc n f seed0 = do
-    B.unsafeUseAsCString (B.concat [">", id, " ", desc]) puts
+make name n f seed0 = do
+    B.unsafeUseAsCString name puts
     let line = B.replicate 61 0
     B.unsafeUseAsCString line $ \ptr -> do
       let make' !n !i !seed
