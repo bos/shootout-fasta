@@ -9,30 +9,25 @@
 module Main (main) where
 
 import System.Environment
-import System.IO.Unsafe
 
-import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Unsafe as B
 import qualified Data.ByteString.Internal as B
-import Data.ByteString (ByteString)
+import qualified Data.ByteString as B
 import Control.Monad
-import Data.IORef
-import Data.Array.Unboxed
-import Data.Array.Storable
 import Data.Array.Base
 import Data.Word
+import Data.Monoid
 
 import Foreign.Ptr
 import Foreign.Storable
 import Foreign.C.Types
+import System.IO
 
-type B = StorableArray Int Word8
 type C = (UArray Int Word8,UArray Int Double)
 
 foreign import ccall unsafe "stdio.h"
      puts  :: Ptr a -> IO ()
-foreign import ccall unsafe "string.h"
-     strlen :: Ptr Word8 -> IO CSize
 
 main :: IO ()
 main = do
@@ -40,43 +35,30 @@ main = do
 
     B.unsafeUseAsCString alu $ \ptr ->
       make "ONE" "Homo sapiens alu" (n*2) (Main.repeat ptr (B.length alu)) 0
-    r <- make "TWO"  "IUB ambiguity codes" (n*3) (genRandom iub) 42
-    _ <- make "THREE" "Homo sapiens frequency" (n*5) (genRandom homosapiens) r
-    return ()
+    make "TWO"  "IUB ambiguity codes" (n*3) (genRandom iub) 42 >>=
+      void . make "THREE" "Homo sapiens frequency" (n*5) (genRandom homosapiens)
 
-make :: String -> String -> Int -> (Int -> W) -> Int -> IO Int
+make :: B.ByteString -> B.ByteString -> Int -> (Int -> W) -> Int -> IO Int
 {-# INLINE make #-}
 make id desc n f seed0 = do
-    let lst = ">" ++ id ++ " " ++ desc
-    a <- (newListArray (0,length lst)
-        $ map (fromIntegral. fromEnum) lst:: IO B)
-    unsafeWrite a (length lst) 0
-    pr a
-    line <- newArray (0,60) 0
-    let make' :: Int -> Int -> Int -> IO Int
-        make' !n !i !seed = do
-            if n > 0
-                then do
-                    let W newseed c = f seed
-                    unsafeWrite line i c
-                    if i+1 >= 60
-                        then do
-                            pr line
-                            make' (n-1) 0 newseed
-                        else
-                            make' (n-1) (i+1) newseed
-                else do
-                    unsafeWrite line i 0
-                    l <- len line
-                    when (l /= 0) $
-                      pr line
-                    return seed
-    make' n 0 seed0
-
-pr :: B -> IO ()
-pr line = withStorableArray line (\ptr -> puts ptr)
-len :: B -> IO CInt
-len line  = withStorableArray line (\ptr -> fromIntegral `fmap` strlen ptr)
+    B.unsafeUseAsCString (">" <> id <> " " <> desc) puts
+    let line = B.replicate 61 0
+    B.unsafeUseAsCString line $ \ptr -> do
+      let make' :: Int -> Int -> Int -> IO Int
+	  make' !n !i !seed = do
+	      if n > 0
+		  then do
+		      let W newseed c = f seed
+		      poke (ptr `plusPtr` i) c
+		      if i+1 >= 60
+			  then puts ptr >> make' (n-1) 0 newseed
+			  else make' (n-1) (i+1) newseed
+		  else do
+		      when (i > 0) $ do
+		        poke (ptr `plusPtr` i) (0::CChar)
+		        puts ptr
+		      return seed
+      make' n 0 seed0
 
 repeat :: Ptr CChar -> Int -> Int -> W
 repeat xs n i = B.inlinePerformIO $ W i' `fmap` peek (xs `plusPtr` i)
@@ -106,7 +88,7 @@ genRand seed = D newseed newran
     ia  = 3877
     ic  = 29573
 
-alu :: ByteString
+alu :: B.ByteString
 alu =
     "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGG\
     \GAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGA\
