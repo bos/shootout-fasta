@@ -19,8 +19,9 @@ import Data.Word (Word8)
 import Foreign.Ptr
 import Foreign.Storable (peek, poke)
 import Foreign.C.Types
+import qualified Data.Vector.Unboxed as V
 
-type C = (UArray Int Word8,UArray Int Float)
+type C = (V.Vector Word8,V.Vector Float)
 
 foreign import ccall unsafe "stdio.h"
      puts  :: Ptr a -> IO ()
@@ -63,7 +64,7 @@ data W = W {-# UNPACK #-} !Int {-# UNPACK #-} !Word8
 genRandom :: C -> Int -> W
 genRandom (!a,!b) seed = find 0
   where find i
-            | b `unsafeAt` i >= rnd = W newseed (a `unsafeAt` i)
+            | b `V.unsafeIndex` i >= rnd = W newseed (a `V.unsafeIndex` i)
             | otherwise = find (i+1)
         D newseed rnd = genRand seed
 
@@ -91,8 +92,8 @@ alu =
     \AGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
 
 mkCum :: [(Char,Float)] -> C
-mkCum lst = (listArray (0, length lst - 1) (map fst ab),
-      	     listArray (0, length lst - 1) (map snd ab))
+mkCum lst = (V.fromListN (length lst) (map fst ab),
+      	     V.fromListN (length lst) (map snd ab))
   where ab = map (\(c,p) -> ((fromIntegral.fromEnum) c,p)) .
              scanl1 (\(_,p) (c',p') -> (c', p+p')) $ lst
 
