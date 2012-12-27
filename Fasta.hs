@@ -19,8 +19,9 @@ import Data.Word (Word8)
 import Foreign.Ptr
 import Foreign.Storable (peek, poke)
 import Foreign.C.Types
+import qualified Data.Vector.Unboxed as U
 
-type C = (UArray Int Word8,UArray Int Float)
+type C = U.Vector (Word8, Float)
 
 foreign import ccall unsafe "stdio.h"
      puts  :: Ptr a -> IO ()
@@ -61,10 +62,11 @@ repeat xs n i = B.inlinePerformIO $ W i' `fmap` peek (xs `plusPtr` i)
 data W = W {-# UNPACK #-} !Int {-# UNPACK #-} !Word8
 
 genRandom :: C -> Int -> W
-genRandom (!a,!b) seed = find 0
+genRandom ab seed = find 0
   where find i
-            | b `unsafeAt` i >= rnd = W newseed (a `unsafeAt` i)
+            | b >= rnd = W newseed a
             | otherwise = find (i+1)
+	    where (!a, !b) = ab `U.unsafeIndex` i
         D newseed rnd = genRand seed
 
 data D = D {-# UNPACK #-} !Int {-# UNPACK #-} !Float
@@ -91,10 +93,9 @@ alu =
     \AGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
 
 mkCum :: [(Char,Float)] -> C
-mkCum lst = (listArray (0, length lst - 1) (map fst ab),
-      	     listArray (0, length lst - 1) (map snd ab))
-  where ab = map (\(c,p) -> ((fromIntegral.fromEnum) c,p)) .
-             scanl1 (\(_,p) (c',p') -> (c', p+p')) $ lst
+mkCum lst = ab
+  where ab = U.map (\(c,p) -> ((fromIntegral.fromEnum) c,p)) .
+             U.scanl1 (\(_,p) (c',p') -> (c', p+p')) . U.fromList $ lst
 
 homosapiens, iub :: C
 
