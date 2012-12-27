@@ -91,10 +91,8 @@ alu =
     \AGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
 
 mkCum :: [(Char,Float)] -> C
-mkCum lst = (listArray (0, length lst - 1) (map fst ab),
-      	     listArray (0, length lst - 1) (map snd ab))
-  where ab = map (\(c,p) -> ((fromIntegral.fromEnum) c,p)) .
-             scanl1 (\(_,p) (c',p') -> (c', p+p')) $ lst
+mkCum lst = (listArray (0, length lst - 1) . map (B.c2w . fst) $ lst,
+      	     listArray (0, length lst - 1) . scanl1 (+) . map snd $ lst)
 
 homosapiens, iub :: C
 
