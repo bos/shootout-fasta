@@ -1,6 +1,6 @@
 GHC = ghc
 CXXFLAGS = -std=c++11 -O3
-GHCFLAGS = -O3 -fllvm -Wall
+GHCFLAGS = -O3 -fllvm -Wall -rtsopts
 
 all: hs cpp c
 
