@@ -9,13 +9,12 @@
 module Main (main) where
 
 import Control.Monad
-import Foreign.C.Types
-import Foreign.Ptr
-import Foreign.Storable
 import System.Environment
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.ByteString.Unsafe as B
+import qualified Data.ByteString.Lazy.Builder as B
+import Data.Monoid
 
 main :: IO ()
 main = do
@@ -42,19 +41,18 @@ make name n0 tbl seed0 = do
 	in B.replicate (fromIntegral (k - j)) c : fill cps k
       fill _ _ = []
   let lookupTable = B.concat $ fill (convert tbl) 0
-  let line = B.replicate 60 '\0'
-  B.unsafeUseAsCString line $ \ptr -> do
-    let make' !n !i !seed
-	    | n > 0 = do
-		let newseed = (seed * 3877 + 29573) `rem` modulus
-		poke (ptr `plusPtr` i) (lookupTable `B.unsafeIndex` newseed)
-		if i+1 >= 60
-		    then puts line 60 >> make' (n-1) 0 newseed
-		    else make' (n-1) (i+1) newseed
-	    | otherwise = do
-		when (i > 0) $ poke (ptr `plusPtr` i) (0::CChar) >> puts line i
-		return seed
-    make' n0 0 seed0
+      make' n !i !bld seed
+	  | n > 0 =
+	      let newseed = (seed * 3877 + 29573) `rem` modulus
+	          !w = lookupTable `B.unsafeIndex` newseed
+	          b = B.word8 w
+	      in if i == 60
+                 then make' (n-1) 1     (bld <> B.word8 10 <> b) newseed
+		 else make' (n-1) (i+1) (bld <> b) newseed
+	  | otherwise = (bld, seed)
+  let (bld, seed) = make' n0 (0::Int) mempty seed0
+  L.putStrLn $ B.toLazyByteString bld
+  return seed
 
 alu :: L.ByteString
 alu = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGG\
@@ -70,6 +68,3 @@ iub = [('a',0.27),('c',0.12),('g',0.12),('t',0.27),('B',0.02)
 
 homosapiens = [('a',0.3029549426680),('c',0.1979883004921)
               ,('g',0.1975473066391),('t',0.3015094502008)]
-
-puts :: B.ByteString -> Int -> IO ()
-puts bs n = B.putStrLn (B.take n bs)
