@@ -1,6 +1,7 @@
 GHC = ghc
 CXXFLAGS = -std=c++11 -O3
 GHCFLAGS = -O3 -fllvm -Wall -rtsopts
+CFLAGS = -O3
 
 all: hs cpp c
 
@@ -23,4 +24,4 @@ oldfastahs: OldFasta.hs
 	$(GHC) $(GHCFLAGS) --make -o $@ $^
 
 clean:
-	-rm -f fastahs fastacpp
+	-rm -f fastahs fastacpp oldfastahs fastac
