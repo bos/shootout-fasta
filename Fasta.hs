@@ -15,6 +15,7 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.ByteString.Unsafe as B
 import qualified Data.ByteString.Lazy.Builder as B
 import Data.Monoid
+import qualified Data.Vector.Unboxed as V
 
 main :: IO ()
 main = do
@@ -41,18 +42,17 @@ make name n0 tbl seed0 = do
 	in B.replicate (fromIntegral (k - j)) c : fill cps k
       fill _ _ = []
   let lookupTable = B.concat $ fill (convert tbl) 0
-      make' n !i !bld seed
-	  | n > 0 =
-	      let newseed = (seed * 3877 + 29573) `rem` modulus
-	          !w = lookupTable `B.unsafeIndex` newseed
+      rnds = V.iterateN (n0+1) (\s -> (s * 3877 + 29573) `rem` modulus) seed0
+      make' n !i
+	  | n <= n0 =
+	      let !w = lookupTable `B.unsafeIndex` (rnds `V.unsafeIndex` n)
 	          b = B.word8 w
 	      in if i == 60
-                 then make' (n-1) 1     (bld <> B.word8 10 <> b) newseed
-		 else make' (n-1) (i+1) (bld <> b) newseed
-	  | otherwise = (bld, seed)
-  let (bld, seed) = make' n0 (0::Int) mempty seed0
-  L.putStrLn $ B.toLazyByteString bld
-  return seed
+                 then B.word8 10 <> b <> make' (n+1) 1
+		 else b <> make' (n+1) (i+1)
+	  | otherwise = mempty
+  L.putStrLn . B.toLazyByteString $ make' 1 (0::Int)
+  return $! V.last rnds
 
 alu :: L.ByteString
 alu = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGG\
