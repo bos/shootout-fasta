@@ -9,9 +9,14 @@ import Foreign.ForeignPtr
 import Foreign.Storable
 import Data.IORef
 import Control.Monad
+import Data.Bits
 
 main = do
   genome <- readGenome
+  length1 genome
+  length2 genome
+
+length1 genome = do
   ht <- newTable
   let len = B.length genome
       go n | n == len = return ()
@@ -20,6 +25,17 @@ main = do
           update ht (fromIntegral k)
           go (n+1)
   go 0
+  print =<< toList ht
+
+length2 genome = do
+  ht <- newTable
+  let len = B.length genome
+      go n !k | n == len = return ()
+              | otherwise = do
+          let k1 = ((k `shiftL` 8) .|. fromIntegral (genome `B.unsafeIndex` n)) .&. 0xffff
+          update ht k1
+          go (n+1) k1
+  go 0 (fromIntegral (B.unsafeHead genome))
   print =<< toList ht
 
 readGenome =
@@ -41,7 +57,7 @@ data MTable = MTable {
 
 newTable :: IO Table
 newTable = do
-  ents <- MV.new 128
+  ents <- MV.new 1024
   MV.set ents End
   size <- mallocForeignPtr
   withForeignPtr size (`poke` 0)

@@ -29,6 +29,7 @@ import GHC.Exts
 main = do
     genome <- extract (S.pack ">TH")
     mapM_ putStrLn =<< printFreqsBySize genome 1
+    mapM_ putStrLn =<< printFreqsBySize genome 2
 {-
     let actions = [
                 do
