@@ -11,7 +11,7 @@ import qualified Data.Vector as V
 import Foreign.ForeignPtr
 import Foreign.Storable
 import Data.IORef
-import Control.Monad (when)
+import Control.Monad
 
 main0 = do
   genome <- readGenome
@@ -54,7 +54,7 @@ readGenome =
 
 data Entry = Entry {
       entKey :: {-# UNPACK #-} !Word64
-    , entCount :: {-# UNPACK #-} !Int
+    , entCount :: {-# UNPACK #-} !(ForeignPtr Int)
     , entNext :: Entry
     } | End
            deriving (Eq, Show)
@@ -79,11 +79,15 @@ update mt k = do
   MTable{..} <- readIORef mt
   let len = MV.length mtEntries
       bucket = fromIntegral k `mod` len
-      go End = Entry k 1 End
-      go (Entry ek ec en) | ek == k = Entry ek (ec+1) en
-                          | otherwise = Entry ek ec (go en)
   v <- MV.read mtEntries bucket
-  MV.write mtEntries bucket $! go v
+  let go End = do nc <- mallocForeignPtr
+                  withForeignPtr nc (`poke` 1)
+                  MV.write mtEntries bucket (Entry k nc v)
+      go (Entry ek ec en) | ek /= k = go en
+                          | otherwise = withForeignPtr ec $ \p -> do
+                                          c <- peek p
+                                          poke p (c+1)
+  go v
   withForeignPtr mtSize $ \ptr -> do
     s <- peek ptr
     let newSize = s + 1
@@ -109,6 +113,10 @@ resize mt fp oldEnts = do
 toList :: Table -> IO [(Word64, Int)]
 toList mt = do
   MTable{..} <- readIORef mt
-  let go End = []
-      go (Entry ek ec en) = (ek, ec) : go en
-  (concatMap go . V.toList) `fmap` V.freeze mtEntries
+  let go :: Entry -> IO [(Word64, Int)]
+      go End = return []
+      go (Entry ek ec en) = do
+              c <- withForeignPtr ec peek
+              xs <- go en
+              return $ (ek, c) : xs
+  (fmap concat . mapM go . V.toList) =<< V.freeze mtEntries
