@@ -3,7 +3,7 @@
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Unsafe as B
-import Data.Word (Word8, Word64)
+import Data.Word (Word8, Word64, Word32)
 import qualified Data.Vector.Mutable as MV
 import qualified Data.Vector as V
 import Foreign.ForeignPtr
@@ -18,13 +18,7 @@ import Control.Arrow
 import Data.Tuple
 import Data.List
 import Text.Printf
-
--- [(97,3787075),(99,2474784),(103,2469314),(116,3768827)]
--- [(0,3787075), (2,2474783),   (6,2469313), (4,3768827)]
-
--- [(0,1147162),(2,750076),(4,1141419),(6,748416),(8,750267),(10,489579),(12,746365),(14,488572),(16,1141599),(18,746318),(20,1136412),(22,744497),(24,748045),(26,488810),(28,744631),(30,487828)]
-
--- [(29793,1141600),(29795,746318),(29799,744497),(29812,1136412),(24929,1147162),(24931,750078),(24935,748416),(24948,1141419),(25441,750267),(26465,748046),(26467,488809),(25443,489579),(25447,488572),(26471,487829),(25460,746365),(26484,744631)]
+import qualified Data.Vector.Unboxed.Mutable as MU
 
 main = do
   genome <- readGenome
@@ -121,7 +115,7 @@ readGenome =
 
 data Entry = Entry {
       _entKey :: {-# UNPACK #-} !Word64
-    , _entCount :: {-# UNPACK #-} !(ForeignPtr Int)
+    , _entIndex :: {-# UNPACK #-} !Int
     , _entNext :: Entry
     } | End
            deriving (Eq, Show)
@@ -131,15 +125,18 @@ type Table = IORef MTable
 data MTable = MTable {
       mtSize :: {-# UNPACK #-} !(ForeignPtr Int)
     , mtEntries :: MV.IOVector Entry
+    , mtCounts :: MU.IOVector Word32
     }
 
 newTable :: IO Table
 newTable = do
-  ents <- MV.new 1024
+  let size = 1024
+  ents <- MV.new size
   MV.set ents End
+  cnts <- MU.new size
   size <- mallocForeignPtr
   withForeignPtr size (`poke` 0)
-  newIORef (MTable size ents)
+  newIORef (MTable size ents cnts)
 
 update :: Table -> Word64 -> IO ()
 update mt k = do
@@ -148,24 +145,25 @@ update mt k = do
       bucket = fromIntegral k `mod` len
   v <- MV.unsafeRead mtEntries bucket
   let go End = {-# SCC "update/addNew" #-}
-               do nc <- mallocForeignPtr
-                  withForeignPtr nc (`poke` 1)
-                  MV.unsafeWrite mtEntries bucket (Entry k nc v)
-                  withForeignPtr mtSize $ \ptr -> do
-                    newSize <- (+1) `fmap` peek ptr
+               do withForeignPtr mtSize $ \ptr -> do
+                    size <- peek ptr
+                    MV.unsafeWrite mtEntries bucket (Entry k size v)
+                    MU.unsafeWrite mtCounts size 1
+                    let newSize = size + 1
                     poke ptr newSize
-                    when (newSize > (len `div` 4) * 3) $
-                      resize mt mtSize =<< V.unsafeFreeze mtEntries
+                    when (newSize > (len `div` 4) * 3) $ do
+                      ents <- V.unsafeFreeze mtEntries
+                      resize mt mtSize ents mtCounts
       go (Entry ek ec en) | ek /= k = go en
-                          | otherwise = withForeignPtr ec $ \p ->
-                                          poke p . (+1) =<< peek p
+                          | otherwise = MU.unsafeRead mtCounts ec >>=
+                                        MU.unsafeWrite mtCounts ec . (+1)
   go v
 
-htLookup :: Table -> Word64 -> IO Int
+htLookup :: Table -> Word64 -> IO Word32
 htLookup mt k = do
   MTable{..} <- readIORef mt
   let go (Entry ek ec en) | ek /= k   = go en
-                          | otherwise = withForeignPtr ec peek
+                          | otherwise = MU.unsafeRead mtCounts ec
       go End = return 0
   go =<< MV.unsafeRead mtEntries (fromIntegral k `mod` MV.length mtEntries)
 
@@ -174,10 +172,12 @@ htSize mt = do
   MTable{..} <- readIORef mt
   withForeignPtr mtSize peek
 
-resize :: Table -> ForeignPtr Int -> V.Vector Entry -> IO ()
-resize mt fp oldEnts = do
-  let newLen = V.length oldEnts * 2
+resize :: Table -> ForeignPtr Int -> V.Vector Entry -> MU.IOVector Word32 -> IO ()
+resize mt fp oldEnts oldCnts = do
+  let len = V.length oldEnts
+      newLen = len * 2
   ents <- MV.new newLen
+  cnts <- MU.grow oldCnts len
   MV.set ents End
   V.forM_ oldEnts $ \es ->
     let go End              = return ()
@@ -186,13 +186,13 @@ resize mt fp oldEnts = do
             MV.unsafeWrite ents b . Entry ek ec =<< MV.unsafeRead ents b
             go en
     in go es
-  writeIORef mt (MTable fp ents)
+  writeIORef mt (MTable fp ents cnts)
 
-toList :: Table -> IO [(Word64, Int)]
+toList :: Table -> IO [(Word64, Word32)]
 toList mt = do
   MTable{..} <- readIORef mt
   let go End = return []
       go (Entry ek ec en) = do
-              c <- withForeignPtr ec peek
+              c <- MU.unsafeRead mtCounts ec
               ((ek, c) :) `fmap` go en
   (fmap concat . mapM go . V.toList) =<< V.freeze mtEntries
