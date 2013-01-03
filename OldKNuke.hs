@@ -28,11 +28,6 @@ import GHC.Exts
 
 main = do
     genome <- extract (S.pack ">TH")
-    mapM_ putStrLn =<< printFreqsBySize genome 1
-    mapM_ putStrLn =<< printFreqsBySize genome 2
-    ss <- mapM (printFreqsSpecific genome) specificSeqs
-    mapM_ putStrLn (concat ss)
-{-
     let actions = [
                 do
                     a <- printFreqsBySize genome 1
@@ -41,7 +36,6 @@ main = do
             ] ++ map (printFreqsSpecific genome) specificSeqs
     output <- concat <$> parallel actions
     forM_ output putStrLn
--}
 
 -- Drop in replacement for sequence
 parallel :: [IO a] -> IO [a]

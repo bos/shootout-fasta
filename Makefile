@@ -1,6 +1,6 @@
 GHC = ghc
 CXXFLAGS = -std=c++11 -O3
-GHCFLAGS = -O3 -Wall -rtsopts
+GHCFLAGS = -O3 -Wall -rtsopts -threaded
 CFLAGS = -O3
 
 all: hs cpp c
