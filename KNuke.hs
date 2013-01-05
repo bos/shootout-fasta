@@ -19,13 +19,27 @@ import Data.Tuple
 import Data.List
 import Text.Printf
 import qualified Data.Vector.Unboxed.Mutable as MU
+import Control.Concurrent
+import Data.Function
 
 main = do
   genome <- readGenome
-  bySize 1 genome
-  bySize 2 genome
-  mapM_ (`specific` genome) ["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"]
+  let specifics = ["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"]
+  xs <- parallel $ [ bySize 1 genome, bySize 2 genome ] ++
+                   map (`specific` genome) specifics
+  putStr $ concat (map unlines xs)
 
+parallel :: [IO a] -> IO [a]
+parallel acts = do
+  caps <- getNumCapabilities
+  if caps == 1
+    then sequence acts
+    else do
+      mvs <- forM acts $ \act -> do
+        var <- newEmptyMVar
+        forkIO $ putMVar var =<< act
+        return var
+      forM mvs takeMVar
 
 compressPrefix :: Int -> B.ByteString -> Word64
 {-# INLINE compressPrefix #-}
@@ -88,11 +102,37 @@ t_compress_roundtrip (Genome genome) = do
 buildTable k genome = do
   ht <- newTable
   let go i !p
-         | i < B.length genome = update ht p' >> go (i+1) p'
+         | i < B.length genome = update ht p' (+1) >> go (i+1) p'
          | otherwise           = return ht
          where p' = compress k genome i p
   go (k-1) (compressPrefix k genome)
 
+overlappingChunks :: Int -> Int -> B.ByteString -> [B.ByteString]
+overlappingChunks size overlap
+    | size <= overlap = error "overlappingChunks: size <= overlap"
+    | otherwise       = go
+  where go bs
+          | B.length bs <= size = [bs]
+          | otherwise = B.take size bs : go (B.drop (size - overlap) bs)
+
+buildTablePar :: Int -> B.ByteString -> IO Table
+buildTablePar k genome = do
+  caps <- getNumCapabilities
+  let len = B.length genome
+      chunkSize
+          | len `mod` caps > 0 = x + 1
+          | otherwise          = x
+          where x = len `div` caps
+      chunks = overlappingChunks chunkSize (k-1) genome
+  ht <- buildTable k (head chunks)
+  ch <- newChan
+  putStrLn $ "sizes: " ++ show (map B.length chunks)
+  forM_ (tail chunks) $ \chunk ->
+    forkIO $ writeChan ch =<< buildTable k chunk
+  forM_ (tail chunks) . const $ extend ht =<< readChan ch
+  return ht
+
+bySize :: Int -> B.ByteString -> IO [String]
 bySize k genome = do
   ht <- buildTable k genome
   xs <- toList ht
@@ -101,14 +141,13 @@ bySize k genome = do
                           EQ -> compare a c
                           w  -> w
       ys = sortBy wat . map (uncompress k *** ((*pct) . fromIntegral)) $ xs
-  forM_ ys $ \(k,f) -> putStrLn $ printf "%s %.03f" k f
-  putStr "\n"
+  return $ (flip map ys $ \(k,f) -> printf "%s %.03f" k f) ++ [""]
 
 specific seq genome = do
   let k = B.length seq
   ht <- buildTable k genome
   n <- htLookup ht (compress k seq (k-1) $ compressPrefix k seq)
-  putStrLn $ show n ++ '\t' : B8.unpack seq
+  return [show n ++ '\t' : B8.unpack seq]
 
 readGenome =
   (B.filter (/=10) . B.dropWhile (/=10) . snd . B.breakSubstring ">TH") `fmap` B.getContents
@@ -138,8 +177,9 @@ newTable = do
   withForeignPtr size (`poke` 0)
   newIORef (MTable size ents cnts)
 
-update :: Table -> Word64 -> IO ()
-update mt k = do
+update :: Table -> Word64 -> (Word32 -> Word32) -> IO ()
+{-# INLINE update #-}
+update mt k f = do
   MTable{..} <- readIORef mt
   let len = MV.length mtEntries
       bucket = fromIntegral k `mod` len
@@ -156,7 +196,7 @@ update mt k = do
                       resize mt mtSize ents mtCounts
       go (Entry ek ec en) | ek /= k = go en
                           | otherwise = MU.unsafeRead mtCounts ec >>=
-                                        MU.unsafeWrite mtCounts ec . (+1)
+                                        MU.unsafeWrite mtCounts ec . f
   go v
 
 htLookup :: Table -> Word64 -> IO Word32
@@ -171,6 +211,9 @@ htSize :: Table -> IO Int
 htSize mt = do
   MTable{..} <- readIORef mt
   withForeignPtr mtSize peek
+
+extend :: Table -> Table -> IO ()
+extend ht oht = mapM_ (\(k,v) -> update ht k (+v)) =<< toList oht
 
 resize :: Table -> ForeignPtr Int -> V.Vector Entry -> MU.IOVector Word32 -> IO ()
 resize mt fp oldEnts oldCnts = do
